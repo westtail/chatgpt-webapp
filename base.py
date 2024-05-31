@@ -1,32 +1,34 @@
 import streamlit as st
 from langchain.chat_models import ChatOpenAI
 from langchain.schema import (
-    SystemMessage,
-    HumanMessage,
-    AIMessage
+    SystemMessage, #SystemMessage,  # システムメッセージ
+    HumanMessage,#HumanMessage,  # 人間の質問
+    AIMessage #AIMessage  # ChatGPTの返答
 )
-#SystemMessage,  # システムメッセージ
-#HumanMessage,  # 人間の質問
-#AIMessage  # ChatGPTの返答
 from langchain.callbacks import get_openai_callback
 
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 
+from langchain.prompts import PromptTemplate
+from langchain.chains.summarize import load_summarize_chain
+from langchain.document_loaders import YoutubeLoader
+
 def init_select_mode():
     st.set_page_config(
         page_title="ChatGPTを流用したwebサイト",
         page_icon="🤗"
     )
-    mode = st.sidebar.radio("使う機能を選択:", ("gpt_chat", "web_summary"))
+    mode = st.sidebar.radio("使う機能を選択:", ("gpt_chat", "web_summary","youtube_summary"))
     if mode == "gpt_chat":
-        mode_name = "gpt_chat"
         st.header("ChatGPT機能 🤗")
-    else:
-        mode_name = "web_summary"
+    elif mode == "web_summary":
         st.header("webサイトの要約 🤗")
+    else:
+        st.header("Youtubeの要約 🤗")
     st.sidebar.title("Options")
+    mode_name = mode
     return mode_name
 
 def init_messages():
@@ -54,6 +56,10 @@ def get_url_input():
     url = st.text_input("URL: ", key="input")
     return url
 
+def get_youtube_url_input():
+    url = st.text_input("Youtube URL: ", key="input")
+    return url
+
 def validate_url(url):
     try:
         result = urlparse(url)
@@ -76,6 +82,37 @@ def get_content(url):
     except:
         st.write('something wrong')
         return None
+
+def get_youtube_document(url):
+    with st.spinner("Fetching Content ..."):
+        loader = YoutubeLoader.from_youtube_url(
+            url,
+            add_video_info=True,  # タイトルや再生数も取得できる
+            language=['en', 'ja']  # 英語→日本語の優先順位で字幕を取得
+        )
+        return loader.load()
+
+def summarize(llm, docs):
+    prompt_template = """Write a concise Japanese summary of the following transcript of Youtube Video.
+        ============
+        {text}
+        ============
+
+        ここから日本語で書いてね
+        必ず10段落以内の600文字以内で簡潔にまとめること:
+        """
+    PROMPT = PromptTemplate(template=prompt_template, input_variables=["text"])
+
+    with get_openai_callback() as cb:
+        chain = load_summarize_chain( 
+            llm,
+            chain_type="stuff",
+            verbose=True,
+            prompt=PROMPT
+        )
+        response = chain({"input_documents": docs}, return_only_outputs=True)
+        
+    return response['output_text'], cb.total_cost
 
 def build_prompt(content, n_chars=300):
     return f"""以下はとある。Webページのコンテンツである。内容を{n_chars}程度でわかりやすく要約してください。
@@ -113,7 +150,7 @@ def main():
                     st.markdown(message.content)
             else:  # isinstance(message, SystemMessage):
                 st.write(f"System message: {message.content}")
-    else:
+    elif mode_name == "web_summary":
         container = st.container()
         response_container = st.container()
 
@@ -142,6 +179,27 @@ def main():
                 st.markdown("---")
                 st.markdown("## Original Text")
                 st.write(content)
+    else:
+        container = st.container()
+        response_container = st.container()
+
+        with container:
+            url = get_youtube_url_input()
+            if url:
+                document = get_youtube_document(url)
+                with st.spinner("ChatGPT is typing ..."):
+                    output_text, cost = summarize(llm, document)
+                st.session_state.costs.append(cost)
+            else:
+                output_text = None
+
+        if output_text:
+            with response_container:
+                st.markdown("## Summary")
+                st.write(output_text)
+                st.markdown("---")
+                st.markdown("## Original Text")
+                st.write(document)
 
     costs = st.session_state.get('costs', [])
     st.sidebar.markdown("## Costs")
