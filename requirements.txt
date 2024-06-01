@@ -6,3 +6,4 @@ langchain-core==0.2.1
 streamlit-chat==0.1.1
 beautifulsoup4==4.12.3
 youtube-transcript-api==0.6.2
+tiktoken==0.7.0
