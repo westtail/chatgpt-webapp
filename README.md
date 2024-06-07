@@ -1,2 +1,5 @@
 # chatgpt-webapp
 chatgptAPIを流用したアプリケーションの作成　
+
+以下のサイトのコードをコピーして作成
+chatgptAPIとLangChainを利用したwebサービスの作成を学ぶことができた
